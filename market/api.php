@@ -898,7 +898,8 @@ switch ($action) {
             jsonResponse(['error' => 'This order was cancelled by the customer and cannot be accepted or updated.'], 400);
         }
 
-        if ($newStatus === 'Accepted' && $ord['order_status'] !== 'Placed') {
+        // Allow accepting orders that are Placed (new) or Rejected (re-accept)
+        if ($newStatus === 'Accepted' && !in_array($ord['order_status'], ['Placed', 'Rejected'])) {
             $db->rollBack();
             jsonResponse(['error' => 'Cannot accept order: order is already ' . $ord['order_status']], 400);
         }
@@ -909,14 +910,16 @@ switch ($action) {
 
         // Get order info to notify customer
         $statusTitles = [
-            'Accepted' => '✅ Order Accepted',
+            'Accepted' => ($ord['order_status'] === 'Rejected') ? '✅ Order Re-Accepted' : '✅ Order Accepted',
             'Preparing' => '🥬 Vegetables Being Prepared',
             'OutForDelivery' => '🛵 Out for Delivery',
             'Delivered' => '🎉 Order Delivered',
             'Rejected' => '❌ Order Rejected'
         ];
         $statusMsgs = [
-            'Accepted' => "Shopkeeper accepted order {$ord['order_number']}.",
+            'Accepted' => ($ord['order_status'] === 'Rejected')
+                ? "Shopkeeper re-accepted your order {$ord['order_number']}. Fresh vegetables are now being prepared!"
+                : "Shopkeeper accepted order {$ord['order_number']}.",
             'Preparing' => "Your fresh vegetables for {$ord['order_number']} are being picked & prepared.",
             'OutForDelivery' => "Delivery partner is on the way with your veggies!",
             'Delivered' => "Order {$ord['order_number']} has been delivered. Enjoy fresh vegetables!",
@@ -931,15 +934,62 @@ switch ($action) {
         jsonResponse(['success' => true]);
         break;
 
+    case 'reaccept_order':
+        checkShopkeeperRole();
+        $orderId = intval($_POST['order_id'] ?? 0);
+
+        if ($orderId <= 0) {
+            jsonResponse(['error' => 'Invalid order ID specified.'], 400);
+        }
+
+        // Atomic transaction with row lock
+        $db->beginTransaction();
+        $stmt = $db->prepare("SELECT order_status, customer_id, order_number FROM orders WHERE id = ? FOR UPDATE");
+        $stmt->execute([$orderId]);
+        $ord = $stmt->fetch();
+
+        if (!$ord) {
+            $db->rollBack();
+            jsonResponse(['error' => 'Order not found.'], 404);
+        }
+
+        if ($ord['order_status'] === 'Cancelled') {
+            $db->rollBack();
+            jsonResponse(['error' => 'This order was cancelled by the customer and cannot be re-accepted.'], 400);
+        }
+
+        if ($ord['order_status'] !== 'Rejected') {
+            $db->rollBack();
+            jsonResponse(['error' => 'Only rejected orders can be re-accepted. Current status is: ' . $ord['order_status']], 400);
+        }
+
+        // Move status back to Accepted according to workflow; preserve original rejection_reason
+        $stmtUp = $db->prepare("UPDATE orders SET order_status = 'Accepted' WHERE id = ?");
+        $stmtUp->execute([$orderId]);
+        $db->commit();
+
+        // Notify customer
+        $stmtNotif = $db->prepare("INSERT INTO notifications (user_id, for_role, title, message, type) VALUES (?, 'customer', ?, ?, 'order')");
+        $stmtNotif->execute([
+            $ord['customer_id'],
+            '✅ Order Re-Accepted',
+            "Shopkeeper re-accepted your order {$ord['order_number']}. Preparing your fresh vegetables now!"
+        ]);
+
+        jsonResponse(['success' => true, 'message' => "Order {$ord['order_number']} re-accepted successfully."]);
+        break;
+
     // --- SHOPKEEPER DASHBOARD & ORDERS ---
     case 'get_shop_orders':
         checkShopkeeperRole();
         $filter = trim($_GET['filter'] ?? 'all');
         $sql = "SELECT * FROM orders";
         if ($filter === 'pending') $sql .= " WHERE order_status = 'Placed'";
-        if ($filter === 'preparing') $sql .= " WHERE order_status IN ('Accepted', 'Preparing')";
-        if ($filter === 'out_for_delivery') $sql .= " WHERE order_status = 'OutForDelivery'";
-        if ($filter === 'completed') $sql .= " WHERE order_status = 'Delivered'";
+        else if ($filter === 'active') $sql .= " WHERE order_status IN ('Accepted', 'Preparing', 'OutForDelivery')";
+        else if ($filter === 'preparing') $sql .= " WHERE order_status IN ('Accepted', 'Preparing')";
+        else if ($filter === 'out_for_delivery') $sql .= " WHERE order_status = 'OutForDelivery'";
+        else if ($filter === 'completed') $sql .= " WHERE order_status = 'Delivered'";
+        else if ($filter === 'rejected') $sql .= " WHERE order_status = 'Rejected'";
         $sql .= " ORDER BY id DESC";
 
         $stmt = $db->query($sql);
@@ -964,8 +1014,16 @@ switch ($action) {
         $outDelivery = $db->query("SELECT COUNT(*) FROM orders WHERE order_status = 'OutForDelivery'")->fetchColumn();
         $completedOrders = $db->query("SELECT COUNT(*) FROM orders WHERE order_status = 'Delivered'")->fetchColumn();
         
-        $todaySales = $db->query("SELECT SUM(total_amount) FROM orders WHERE DATE(created_at) = '$today' AND order_status != 'Rejected'")->fetchColumn() ?: 0;
-        $pendingPayments = $db->query("SELECT COUNT(*) FROM orders WHERE payment_status = 'Pending' AND order_status != 'Rejected'")->fetchColumn();
+        // Accurate Sales for today: only paid orders on current day, excluding rejected and cancelled orders
+        $todaySales = $db->query("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE DATE(created_at) = '$today' AND payment_status = 'Paid' AND order_status NOT IN ('Rejected', 'Cancelled')")->fetchColumn() ?: 0;
+        
+        // Accurate Pending Payments: orders with payment_status = 'Pending' that are not rejected or cancelled
+        $pendingPayments = $db->query("SELECT COUNT(*) FROM orders WHERE payment_status = 'Pending' AND order_status NOT IN ('Rejected', 'Cancelled')")->fetchColumn() ?: 0;
+        $pendingPaymentsAmount = $db->query("SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE payment_status = 'Pending' AND order_status NOT IN ('Rejected', 'Cancelled')")->fetchColumn() ?: 0;
+
+        // Active and Rejected order counts for Order Management categories
+        $activeOrders = $db->query("SELECT COUNT(*) FROM orders WHERE order_status IN ('Accepted', 'Preparing', 'OutForDelivery')")->fetchColumn() ?: 0;
+        $rejectedOrders = $db->query("SELECT COUNT(*) FROM orders WHERE order_status = 'Rejected'")->fetchColumn() ?: 0;
 
         jsonResponse([
             'today_orders' => intval($todayOrders),
@@ -974,7 +1032,10 @@ switch ($action) {
             'out_for_delivery' => intval($outDelivery),
             'completed_orders' => intval($completedOrders),
             'today_sales' => floatval($todaySales),
-            'pending_payments' => intval($pendingPayments)
+            'pending_payments' => intval($pendingPayments),
+            'pending_payments_amount' => floatval($pendingPaymentsAmount),
+            'active_orders' => intval($activeOrders),
+            'rejected_orders' => intval($rejectedOrders)
         ]);
         break;
 

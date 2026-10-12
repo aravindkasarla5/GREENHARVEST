@@ -2408,146 +2408,585 @@ const App = (() => {
   // SHOPKEEPER VIEW
   // ───────────────────────────────────────────────
   async function renderShopkeeperView() {
+    state.shopOrderCategory = state.shopOrderCategory || 'active';
     qs('#app').innerHTML = `
       <div class="bg-card flex justify-between items-center flex-wrap gap-3" style="margin-bottom:20px;">
         <div>
-          <h2 style="font-size:20px;">🏪 Shopkeeper Management</h2>
-          <p class="text-sm text-muted" style="margin-top:2px;">Manage vegetable orders, inventory & shop settings.</p>
+          <h2 style="font-size:20px;">🏪 Shopkeeper Dashboard</h2>
+          <p class="text-sm text-muted" style="margin-top:2px;">Overview of today's orders, status breakdown &amp; real-time operations.</p>
         </div>
         <button id="shopStatusBtn" class="role-btn" onclick="App.toggleShop()" style="background:${state.settings.shop_status==='OPEN'?'#dcfce7':'#fef2f2'}; color:${state.settings.shop_status==='OPEN'?'#166534':'#dc2626'}; border-color:${state.settings.shop_status==='OPEN'?'#86efac':'#fca5a5'};">
           ${state.settings.shop_status==='OPEN' ? '🟢 SHOP OPEN — Click to Close' : '🔴 SHOP CLOSED — Click to Open'}
         </button>
       </div>
 
-      <!-- STATS -->
-      <div id="statsGrid" class="stats-grid">
-        ${['📦 Today','⏳ Pending','🥬 Preparing','🛵 Out','✅ Done','💰 Sales','⚠️ Pay Pending'].map((l,i)=>
-          `<div class="stat-card" id="sc${i}"><div class="stat-icon">${l.split(' ')[0]}</div><div class="stat-val" id="sv${i}">...</div><div class="stat-lbl">${l.split(' ').slice(1).join(' ')}</div></div>`
-        ).join('')}
+      <!-- SEVEN COMPACT SUMMARY CARDS -->
+      <div id="statsGrid" class="stats-grid shopkeeper-summary-grid">
+        <div class="stat-card" id="sc0" onclick="App.setShopOrderCategory('today')" title="View today's orders">
+          <div class="stat-icon">📦</div>
+          <div class="stat-val" id="sv0">...</div>
+          <div class="stat-lbl">Today's Orders</div>
+        </div>
+        <div class="stat-card" id="sc1" onclick="App.setShopOrderCategory('pending')" title="View orders awaiting decision">
+          <div class="stat-icon">⏳</div>
+          <div class="stat-val" id="sv1">...</div>
+          <div class="stat-lbl">Pending</div>
+        </div>
+        <div class="stat-card" id="sc2" onclick="App.setShopOrderCategory('active')" title="View preparing orders">
+          <div class="stat-icon">🥬</div>
+          <div class="stat-val" id="sv2">...</div>
+          <div class="stat-lbl">Preparing</div>
+        </div>
+        <div class="stat-card" id="sc3" onclick="App.setShopOrderCategory('active')" title="View dispatched orders">
+          <div class="stat-icon">🛵</div>
+          <div class="stat-val" id="sv3">...</div>
+          <div class="stat-lbl">Out for Delivery</div>
+        </div>
+        <div class="stat-card" id="sc4" onclick="App.setShopOrderCategory('completed')" title="View completed orders">
+          <div class="stat-icon">✅</div>
+          <div class="stat-val" id="sv4">...</div>
+          <div class="stat-lbl">Done</div>
+        </div>
+        <div class="stat-card" id="sc5" onclick="App.navigateToShopPage('reports')" title="View Sales Reports">
+          <div class="stat-icon">💰</div>
+          <div class="stat-val" id="sv5">...</div>
+          <div class="stat-lbl">Sales</div>
+        </div>
+        <div class="stat-card" id="sc6" onclick="App.navigateToShopPage('payments')" title="View Payment History">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-val" id="sv6">...</div>
+          <div class="stat-lbl">Payment Pending</div>
+        </div>
       </div>
 
-      <!-- TABS -->
-      <div class="shop-tab-bar">
-        <button class="stab active" id="stab_orders" onclick="App.shopTab('orders')">📦 Orders</button>
-        <button class="stab" id="stab_vegetables" onclick="App.shopTab('vegetables')">🥕 Vegetables</button>
-        <button class="stab" id="stab_inventory" onclick="App.shopTab('inventory')">📊 Inventory</button>
-        <button class="stab" id="stab_payments" onclick="App.shopTab('payments')">💳 Payments</button>
-        <button class="stab" id="stab_reports" onclick="App.shopTab('reports')">📈 Reports</button>
-        <button class="stab" id="stab_chat" onclick="App.shopTab('chat')">💬 Chat</button>
-        <button class="stab" id="stab_settings" onclick="App.shopTab('settings')">⚙️ Settings</button>
-        <button class="stab" id="stab_profile" onclick="App.shopTab('profile')">👤 Profile</button>
-      </div>
+      <!-- ORDER MANAGEMENT SECTION (IMMEDIATELY BELOW SUMMARY CARDS) -->
+      <div id="shopOrdersSection" class="shop-orders-section" style="margin-top:22px;">
+        <div class="order-mgmt-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+          <div>
+            <h3 style="font-size:18px; font-weight:800; color:var(--dark);">📦 Order Management</h3>
+            <p class="text-xs text-muted" style="margin-top:2px;">Live incoming orders, active preparation, completed deliveries and rejected orders</p>
+          </div>
+          <div class="orders-filter-bar order-mgmt-chips" style="margin:0;">
+            <button class="filter-chip ${state.shopOrderCategory === 'active' ? 'active' : ''}" id="socChip_active" onclick="App.setShopOrderCategory('active')">
+              ⚡ Active Orders
+            </button>
+            <button class="filter-chip ${state.shopOrderCategory === 'pending' ? 'active' : ''}" id="socChip_pending" onclick="App.setShopOrderCategory('pending')">
+              ⏳ Pending Orders
+            </button>
+            <button class="filter-chip ${state.shopOrderCategory === 'completed' ? 'active' : ''}" id="socChip_completed" onclick="App.setShopOrderCategory('completed')">
+              ✅ Completed Orders
+            </button>
+            <button class="filter-chip ${state.shopOrderCategory === 'rejected' ? 'active' : ''}" id="socChip_rejected" onclick="App.setShopOrderCategory('rejected')">
+              ❌ Rejected Orders
+            </button>
+          </div>
+        </div>
 
-      <div id="shopContent">
-        <div class="page-loader"><div class="spinner"></div></div>
+        <div id="shopOrdersContainer">
+          <div class="page-loader" style="min-height:160px;"><div class="spinner"></div></div>
+        </div>
       </div>
     `;
 
+    renderSideMenu();
     await loadShopStats();
-    await loadShopTabContent('orders');
+    await loadShopOrders();
     updateCartBadge();
   }
 
   async function loadShopStats() {
     const d = await api('get_shop_dashboard');
-    const vals = [d.today_orders, d.pending_orders, d.preparing_orders, d.out_for_delivery, d.completed_orders, `₹${parseFloat(d.today_sales||0).toFixed(0)}`, d.pending_payments];
+    if (!d) return;
+    const vals = [
+      d.today_orders ?? 0,
+      d.pending_orders ?? 0,
+      d.preparing_orders ?? 0,
+      d.out_for_delivery ?? 0,
+      d.completed_orders ?? 0,
+      `₹${parseFloat(d.today_sales || 0).toFixed(0)}`,
+      d.pending_payments ?? 0
+    ];
     vals.forEach((v, i) => { const el = qs(`#sv${i}`); if (el) el.textContent = v; });
+
+    // Update category badge counts on chips
+    const chipActive = qs('#socChip_active');
+    const chipPending = qs('#socChip_pending');
+    const chipCompleted = qs('#socChip_completed');
+    const chipRejected = qs('#socChip_rejected');
+    if (chipActive && d.active_orders !== undefined) chipActive.innerHTML = `⚡ Active Orders (${d.active_orders})`;
+    if (chipPending && d.pending_orders !== undefined) chipPending.innerHTML = `⏳ Pending Orders (${d.pending_orders})`;
+    if (chipCompleted && d.completed_orders !== undefined) chipCompleted.innerHTML = `✅ Completed Orders (${d.completed_orders})`;
+    if (chipRejected && d.rejected_orders !== undefined) chipRejected.innerHTML = `❌ Rejected Orders (${d.rejected_orders})`;
   }
 
-  async function loadShopTabContent(tab) {
-    state.shopTab = tab;
-    document.querySelectorAll('.stab').forEach(b => b.classList.remove('active'));
-    const activeBtn = qs(`#stab_${tab}`);
-    if (activeBtn) activeBtn.classList.add('active');
-
-    const container = qs('#shopContent');
-    if (!container) return;
-    container.innerHTML = `<div class="page-loader"><div class="spinner"></div></div>`;
-
-    switch (tab) {
-      case 'orders': await loadShopOrders(container); break;
-      case 'vegetables': await loadVegManagement(container); break;
-      case 'inventory': await loadInventory(container); break;
-      case 'payments': await loadPayments(container); break;
-      case 'reports': await loadReports(container); break;
-      case 'chat': await loadShopChat(container); break;
-      case 'settings': await loadSettings(container); break;
-      case 'profile': await loadShopProfile(container); break;
-    }
+  function setShopOrderCategory(cat) {
+    state.shopOrderCategory = cat;
+    document.querySelectorAll('.order-mgmt-chips .filter-chip').forEach(b => b.classList.remove('active'));
+    const activeChip = qs(`#socChip_${cat}`);
+    if (activeChip) activeChip.classList.add('active');
+    loadShopOrders();
   }
+
+  let _shopOrdersCache = [];
 
   async function loadShopOrders(container) {
+    const target = container || qs('#shopOrdersContainer') || qs('#shopContent');
+    if (!target) return;
+    target.innerHTML = `<div class="page-loader" style="min-height:140px;"><div class="spinner"></div></div>`;
+
     const data = await api('get_shop_orders');
     const orders = data.orders || [];
+    _shopOrdersCache = orders;
 
-    const statusClass = { Placed:'sp-placed', Accepted:'sp-accepted', Preparing:'sp-preparing', OutForDelivery:'sp-out', Delivered:'sp-delivered', Rejected:'sp-rejected', Cancelled:'sp-cancelled' };
-    const nextStatus = { Placed:'Accepted', Accepted:'Preparing', Preparing:'OutForDelivery', OutForDelivery:'Delivered' };
+    // Map into the four categories
+    const activeOrders = orders.filter(o => ['Accepted', 'Preparing', 'OutForDelivery'].includes(o.order_status));
+    const pendingOrders = orders.filter(o => o.order_status === 'Placed');
+    const completedOrders = orders.filter(o => o.order_status === 'Delivered');
+    const rejectedOrders = orders.filter(o => o.order_status === 'Rejected');
 
-    if (!orders.length) {
-      container.innerHTML = `<div class="empty-state"><div class="emj">📦</div><h3>No Orders Yet</h3><p>Customer vegetable orders will appear here in real-time.</p></div>`;
+    // Update category chip labels
+    const chipActive = qs('#socChip_active');
+    const chipPending = qs('#socChip_pending');
+    const chipCompleted = qs('#socChip_completed');
+    const chipRejected = qs('#socChip_rejected');
+    if (chipActive) chipActive.innerHTML = `⚡ Active Orders (${activeOrders.length})`;
+    if (chipPending) chipPending.innerHTML = `⏳ Pending Orders (${pendingOrders.length})`;
+    if (chipCompleted) chipCompleted.innerHTML = `✅ Completed Orders (${completedOrders.length})`;
+    if (chipRejected) chipRejected.innerHTML = `❌ Rejected Orders (${rejectedOrders.length})`;
+
+    const cat = state.shopOrderCategory || 'active';
+    let displayed = [];
+    let emptyTitle = '';
+    let emptyDesc = '';
+
+    if (cat === 'pending') {
+      displayed = pendingOrders;
+      emptyTitle = 'No Pending Orders';
+      emptyDesc = 'New orders awaiting your acceptance will appear here in real-time.';
+    } else if (cat === 'completed') {
+      displayed = completedOrders;
+      emptyTitle = 'No Completed Orders';
+      emptyDesc = 'Orders that have been successfully delivered will appear here.';
+    } else if (cat === 'rejected') {
+      displayed = rejectedOrders;
+      emptyTitle = 'No Rejected Orders';
+      emptyDesc = 'Orders rejected by the store will appear here with re-acceptance options.';
+    } else if (cat === 'today') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      displayed = orders.filter(o => (o.created_at || '').startsWith(todayStr));
+      emptyTitle = "No Orders Today";
+      emptyDesc = 'Orders placed today will appear here.';
+    } else {
+      displayed = activeOrders;
+      emptyTitle = 'No Active Orders';
+      emptyDesc = 'Orders currently in preparation or out for delivery will appear here.';
+    }
+
+    if (!displayed.length) {
+      target.innerHTML = `
+        <div class="empty-state" style="padding:32px 16px;">
+          <div class="emj">📦</div>
+          <h3>${emptyTitle}</h3>
+          <p>${emptyDesc}</p>
+        </div>
+      `;
       return;
     }
 
-    container.innerHTML = `<div style="display:flex; flex-direction:column; gap:14px;">
-      ${orders.map(o => `
-        <div class="order-card" id="oc${o.id}">
-          <div class="order-card-header">
-            <div>
-              <strong style="font-size:16px;">${o.order_number}</strong>
-              <div class="text-xs text-muted mt-1">👤 ${o.customer_name} · 📞 ${o.customer_phone}</div>
-              <div class="text-xs text-muted">📍 ${o.delivery_address}</div>
-            </div>
-            <span class="status-pill ${statusClass[o.order_status] || ''}">${o.order_status}</span>
+    target.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        ${displayed.map(o => renderShopOrderCard(o)).join('')}
+      </div>
+    `;
+  }
+
+  function renderShopOrderCard(o) {
+    const statusClass = { Placed:'sp-placed', Accepted:'sp-accepted', Preparing:'sp-preparing', OutForDelivery:'sp-out', Delivered:'sp-delivered', Rejected:'sp-rejected', Cancelled:'sp-cancelled' };
+    const items = o.items || [];
+    const dateFormatted = o.created_at ? formatDate(o.created_at) : '';
+
+    return `
+      <div class="order-card" id="oc${o.id}">
+        <!-- Top header: Order Number & Date pill on left, Status pill on right -->
+        <div class="order-card-header">
+          <div class="order-card-id-block">
+            <span class="order-card-num">📦 ${escapeHtml(o.order_number)}</span>
+            ${dateFormatted ? `<span class="order-card-date">🕒 ${dateFormatted}</span>` : ''}
+          </div>
+          <span class="status-pill ${statusClass[o.order_status] || ''}">${escapeHtml(o.order_status)}</span>
+        </div>
+
+        <!-- Customer details card box -->
+        <div class="order-card-cust-info">
+          <div class="order-card-cust-row">
+            <span class="order-card-cust-name">👤 ${escapeHtml(o.customer_name || 'Customer')}</span>
+            ${o.customer_phone ? `
+              <a href="tel:${escapeHtml(o.customer_phone)}" class="order-card-cust-phone" title="Call customer">
+                📞 ${escapeHtml(o.customer_phone)}
+              </a>
+            ` : ''}
+          </div>
+          <div class="order-card-address">
+            <span style="font-size:14px; flex-shrink:0;">📍</span>
+            <span>${escapeHtml(o.delivery_address || 'No address provided')}</span>
+          </div>
+        </div>
+
+        <!-- Vegetables Preview List -->
+        <div class="order-items-preview">
+          <div class="order-items-title">
+            <span>🥬 Ordered Vegetables (${items.length})</span>
+          </div>
+          <div class="order-item-chip-list">
+            ${items.map(i => `
+              <div class="order-item-chip">
+                <div class="order-item-chip-left">
+                  <span class="order-item-icon">🌱</span>
+                  <span class="order-item-name">${escapeHtml(i.product_name)}</span>
+                  <span class="order-item-qty-badge">${escapeHtml(i.unit_weight)} × ${i.quantity}</span>
+                </div>
+                <span class="order-item-price">₹${parseFloat(i.item_total || 0).toFixed(2)}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Footer with payment details & total bill -->
+        <div class="order-card-footer">
+          <div class="order-card-pay-info">
+            <span class="order-pay-method-tag">💳 ${escapeHtml(o.payment_method)}</span>
+            <span class="order-pay-status-pill ${o.payment_status === 'Paid' ? 'paid' : 'pending'}">
+              ${o.payment_status === 'Paid' ? '✓ Paid' : '⏳ Pending'}
+            </span>
+            ${o.upi_trans_id ? `<span class="text-xs text-muted" style="font-family:monospace; font-size:11px; background:#ffffff; padding:2px 6px; border:1px solid #cbd5e1; border-radius:4px;">Ref: ${escapeHtml(o.upi_trans_id)}</span>` : ''}
+          </div>
+          <div class="order-card-total-box">
+            <span class="order-card-total-lbl">Total:</span>
+            <span class="order-card-total-val">₹${parseFloat(o.total_amount || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        ${o.order_status === 'Rejected' && o.rejection_reason ? `
+          <div style="font-size:12.5px; color:#991b1b; background:#fef2f2; border:1px solid #fca5a5; padding:8px 12px; border-radius:8px;">
+            <strong>⚠️ Rejection Reason:</strong> ${escapeHtml(o.rejection_reason)}
+          </div>
+        ` : ''}
+
+        <!-- Actions Row: View Details button on left, Status action buttons on right -->
+        <div class="order-card-actions">
+          <div class="order-card-actions-left">
+            <button class="btn-view-details" onclick="App.openShopOrderDetailsModal(${o.id})" title="View full order details">
+              👁️ View Details
+            </button>
+            ${o.order_status === 'Delivered' ? `
+              <button class="os-btn" onclick="App.openPaymentReceipt(${o.id})" title="View / Print Receipt">🧾 Receipt</button>
+            ` : ''}
           </div>
 
-          <div style="margin-bottom:10px; font-size:13.5px;">
-            <strong>Vegetables:</strong>
-            <ul style="margin:5px 0 0 18px; line-height:1.8;">
-              ${(o.items||[]).map(i=>`<li>${i.product_name} — <strong>${i.unit_weight} × ${i.quantity}</strong> = ₹${parseFloat(i.item_total).toFixed(2)}</li>`).join('')}
-            </ul>
-          </div>
-
-          <div class="flex justify-between items-center" style="font-size:13.5px; background:#f8fafc; padding:8px 12px; border-radius:8px; margin-bottom:10px;">
-            <span>💳 ${o.payment_method} | <strong style="color:${o.payment_status==='Paid'?'var(--primary)':'var(--accent)'};">${o.payment_status}</strong></span>
-            <strong style="font-size:15px; color:var(--primary-deep);">₹${parseFloat(o.total_amount).toFixed(2)}</strong>
-          </div>
-
-          ${o.upi_trans_id ? `<div class="text-xs text-muted" style="margin-bottom:8px;">🆔 UPI Ref: <code style="background:#f1f5f9; padding:2px 6px; border-radius:4px;">${o.upi_trans_id}</code></div>` : ''}
-
-          <div class="order-status-btns">
+          <div class="order-card-actions-right">
             ${o.order_status === 'Placed' ? `
               <button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Accepted')">✅ Accept Order</button>
-              <button class="os-btn reject" onclick="App.setOrderStatus(${o.id},'Rejected')">❌ Reject</button>
-            ` : ''}
-            ${o.order_status === 'Cancelled' ? `
-              <span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:6px 12px; border-radius:6px; font-size:12.5px;">❌ Order Cancelled by Customer</span>
+              <button class="os-btn reject" onclick="App.rejectOrderModal(${o.id},'${escapeHtml(o.order_number)}')">❌ Reject</button>
             ` : ''}
             ${o.order_status === 'Accepted' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Preparing')">🥬 Start Preparing</button>` : ''}
             ${o.order_status === 'Preparing' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'OutForDelivery')">🛵 Out for Delivery</button>` : ''}
             ${o.order_status === 'OutForDelivery' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Delivered')">🎉 Mark Delivered</button>` : ''}
-            ${['Delivered','Rejected'].includes(o.order_status) ? `<span class="text-xs text-muted">✔ Completed</span>` : ''}
+            ${o.order_status === 'Delivered' ? `
+              <span class="text-xs" style="font-weight:750; color:#15803d; background:#dcfce7; padding:4px 10px; border-radius:6px;">✔ Delivered</span>
+            ` : ''}
+            ${o.order_status === 'Rejected' ? `
+              <button class="os-btn active" onclick="App.reacceptOrder(${o.id},'${escapeHtml(o.order_number)}')">🔄 Re-Accept Order</button>
+            ` : ''}
+            ${o.order_status === 'Cancelled' ? `
+              <span class="badge" style="background:#fee2e2; color:#b91c1c; font-weight:700; padding:6px 12px; border-radius:6px; font-size:12px;">❌ Cancelled by Customer</span>
+            ` : ''}
             ${o.payment_status !== 'Paid' && !['Rejected', 'Cancelled'].includes(o.order_status) ? `<button class="os-btn" onclick="App.verifyPay(${o.id})">💳 Mark as Paid</button>` : ''}
           </div>
         </div>
-      `).join('')}
-    </div>`;
+      </div>
+    `;
   }
 
-  async function setOrderStatus(orderId, status) {
-    const res = await api('update_order_status', { order_id: orderId, status }, 'POST');
+  async function openShopOrderDetailsModal(orderId) {
+    let o = (_shopOrdersCache || []).find(x => x.id === orderId);
+    if (!o) {
+      Modal.show(`<div class="page-loader" style="padding:40px;"><div class="spinner"></div><p class="text-sm mt-2">Loading order details...</p></div>`, true);
+      const res = await api('get_order_details', { id: orderId });
+      if (res && res.order) {
+        o = res.order;
+      }
+    }
+    if (!o) {
+      toast('Order details not found', 'error');
+      return;
+    }
+
+    const statusClass = { Placed:'sp-placed', Accepted:'sp-accepted', Preparing:'sp-preparing', OutForDelivery:'sp-out', Delivered:'sp-delivered', Rejected:'sp-rejected', Cancelled:'sp-cancelled' };
+    const items = o.items || [];
+    const subtotal = parseFloat(o.subtotal || 0);
+    const deliveryFee = parseFloat(o.delivery_fee || 0);
+    const discount = parseFloat(o.discount_amount || 0);
+    const totalAmount = parseFloat(o.total_amount || 0);
+    const isPaid = (o.payment_status === 'Paid');
+
+    Modal.show(`
+      <div class="shop-order-modal-details">
+        <!-- Header -->
+        <div class="som-header">
+          <div>
+            <div class="som-title">📦 Order ${escapeHtml(o.order_number.startsWith('#') ? o.order_number : '#' + o.order_number)}</div>
+            <div class="som-subtitle">🕒 Placed on ${formatDate(o.created_at)}</div>
+          </div>
+          <span class="status-pill ${statusClass[o.order_status] || ''}">${escapeHtml(o.order_status)}</span>
+        </div>
+
+        <!-- Customer & Delivery Card -->
+        <div class="som-card-section">
+          <div class="som-section-heading">👤 Customer &amp; Delivery Information</div>
+          <div class="som-cust-grid">
+            <div class="som-cust-field">
+              <span class="som-label">Customer Name</span>
+              <strong class="som-val">${escapeHtml(o.customer_name || 'Customer')}</strong>
+            </div>
+            <div class="som-cust-field">
+              <span class="som-label">Phone Number</span>
+              <a href="tel:${escapeHtml(o.customer_phone || '')}" class="som-phone-link">
+                📞 ${escapeHtml(o.customer_phone || 'N/A')}
+              </a>
+            </div>
+            <div class="som-cust-field full-width">
+              <span class="som-label">Delivery Address</span>
+              <div class="som-address-val">📍 ${escapeHtml(o.delivery_address || 'No address provided')}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ordered Vegetables Table -->
+        <div class="som-card-section">
+          <div class="som-section-heading">🥬 Ordered Vegetables (${items.length} ${items.length === 1 ? 'item' : 'items'})</div>
+          <div class="som-table-wrapper">
+            <table class="som-items-table">
+              <thead>
+                <tr>
+                  <th>Vegetable</th>
+                  <th style="text-align:center;">Weight/Unit</th>
+                  <th style="text-align:center;">Qty</th>
+                  <th style="text-align:right;">Unit Price</th>
+                  <th style="text-align:right;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map(it => `
+                  <tr>
+                    <td>
+                      <div class="som-item-cell">
+                        <span class="som-veg-icon">🌱</span>
+                        <strong>${escapeHtml(it.product_name)}</strong>
+                      </div>
+                    </td>
+                    <td style="text-align:center;"><span class="som-unit-badge">${escapeHtml(it.unit_weight)}</span></td>
+                    <td style="text-align:center;"><strong>${it.quantity}</strong></td>
+                    <td style="text-align:right; color:var(--slate-600);">₹${parseFloat(it.price || 0).toFixed(2)}</td>
+                    <td style="text-align:right; font-weight:800; color:var(--dark);">₹${parseFloat(it.item_total || 0).toFixed(2)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Bill & Payment Breakdown -->
+        <div class="som-card-section">
+          <div class="som-section-heading">💳 Bill &amp; Payment Summary</div>
+          <div class="som-bill-grid">
+            <div class="som-bill-row">
+              <span>Vegetables Subtotal:</span>
+              <strong>₹${subtotal.toFixed(2)}</strong>
+            </div>
+            <div class="som-bill-row">
+              <span>Delivery Fee:</span>
+              <span>${deliveryFee > 0 ? `₹${deliveryFee.toFixed(2)}` : '<strong style="color:var(--primary);">FREE</strong>'}</span>
+            </div>
+            ${discount > 0 ? `
+              <div class="som-bill-row" style="color:var(--primary);">
+                <span>Coupon Discount:</span>
+                <strong>-₹${discount.toFixed(2)}</strong>
+              </div>
+            ` : ''}
+            <div class="som-bill-row total">
+              <span>Total Bill Amount:</span>
+              <strong class="som-grand-total">₹${totalAmount.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          <div class="som-pay-meta">
+            <div class="som-pay-meta-item">
+              <span class="som-label">Payment Method:</span>
+              <span class="order-pay-method-tag">💳 ${escapeHtml(o.payment_method)}</span>
+            </div>
+            <div class="som-pay-meta-item">
+              <span class="som-label">Payment Status:</span>
+              <span class="order-pay-status-pill ${isPaid ? 'paid' : 'pending'}">
+                ${isPaid ? '✓ Paid' : '⏳ Pending'}
+              </span>
+            </div>
+            ${o.upi_trans_id ? `
+              <div class="som-pay-meta-item full">
+                <span class="som-label">UPI Reference ID:</span>
+                <code class="som-upi-ref">${escapeHtml(o.upi_trans_id)}</code>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        ${o.order_status === 'Rejected' && o.rejection_reason ? `
+          <div class="som-reject-notice">
+            <strong>⚠️ Rejection Reason:</strong> ${escapeHtml(o.rejection_reason)}
+          </div>
+        ` : ''}
+
+        <!-- Actions in Modal -->
+        <div class="som-modal-actions">
+          <div class="som-modal-actions-left">
+            <button class="os-btn" onclick="App.openPaymentReceipt(${o.id})" title="Print or View Receipt">
+              🧾 View Receipt
+            </button>
+            ${!isPaid && !['Rejected', 'Cancelled'].includes(o.order_status) ? `
+              <button class="os-btn" onclick="App.verifyPay(${o.id}); Modal.hide();" style="background:#fef3c7; border-color:#fde68a; color:#b45309; font-weight:750;">
+                💳 Mark as Paid
+              </button>
+            ` : ''}
+          </div>
+          <div class="som-modal-actions-right">
+            ${o.order_status === 'Placed' ? `
+              <button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Accepted'); Modal.hide();">✅ Accept</button>
+              <button class="os-btn reject" onclick="Modal.hide(); App.rejectOrderModal(${o.id},'${escapeHtml(o.order_number)}');">❌ Reject</button>
+            ` : ''}
+            ${o.order_status === 'Accepted' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Preparing'); Modal.hide();">🥬 Start Preparing</button>` : ''}
+            ${o.order_status === 'Preparing' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'OutForDelivery'); Modal.hide();">🛵 Out for Delivery</button>` : ''}
+            ${o.order_status === 'OutForDelivery' ? `<button class="os-btn active" onclick="App.setOrderStatus(${o.id},'Delivered'); Modal.hide();">🎉 Mark Delivered</button>` : ''}
+            ${o.order_status === 'Rejected' ? `<button class="os-btn active" onclick="App.reacceptOrder(${o.id},'${escapeHtml(o.order_number)}'); Modal.hide();">🔄 Re-Accept</button>` : ''}
+            <button class="os-btn" onclick="Modal.hide()" style="border-color:#cbd5e1; color:var(--slate-600);">✕ Close</button>
+          </div>
+        </div>
+      </div>
+    `, true);
+  }
+
+  async function rejectOrderModal(orderId, orderNum) {
+    const reason = prompt(`Enter reason for rejecting order ${orderNum} (optional):`, 'Store closing or item temporarily out of stock');
+    if (reason === null) return; // User cancelled prompt
+    await setOrderStatus(orderId, 'Rejected', reason.trim() || 'Store item unavailable');
+  }
+
+  async function reacceptOrder(orderId, orderNum) {
+    const confirmed = confirm(
+      `Are you sure you want to re-accept order ${orderNum}?\n\nThis will update the order status to 'Accepted' and move it back into Active Orders.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await api('reaccept_order', { order_id: orderId }, 'POST');
+      if (res.success) {
+        toast(`✅ Order ${orderNum} re-accepted! Moved to Active Orders.`);
+        await loadShopStats();
+        await loadShopOrders();
+      } else {
+        toast(res.error || 'Failed to re-accept order.', 'error');
+        await loadShopOrders();
+      }
+    } catch (e) {
+      toast('Network error while re-accepting order.', 'error');
+    }
+  }
+
+  async function setOrderStatus(orderId, status, reason = '') {
+    const res = await api('update_order_status', { order_id: orderId, status, reason }, 'POST');
     if (res.success) {
       toast(`✅ Order ${status}!`);
       await loadShopStats();
-      await loadShopOrders(qs('#shopContent'));
+      await loadShopOrders();
     } else {
       toast(res.error || `Failed to update order status`, 'error');
-      await loadShopOrders(qs('#shopContent'));
+      await loadShopOrders();
     }
   }
 
   async function verifyPay(orderId) {
     const res = await api('verify_payment', { order_id: orderId, payment_status: 'Paid' }, 'POST');
-    if (res.success) { toast('Payment marked as Paid'); loadShopOrders(qs('#shopContent')); }
+    if (res.success) {
+      toast('Payment marked as Paid');
+      await loadShopStats();
+      await loadShopOrders();
+    }
+  }
+
+  function navigateToShopPage(page) {
+    state.shopTab = page;
+    if (page === 'dashboard' || page === 'orders') {
+      window.location.hash = (page === 'orders') ? '#orders' : '#dashboard';
+      renderShopkeeperView();
+      if (page === 'orders') {
+        setTimeout(() => {
+          const el = qs('#shopOrdersSection');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 150);
+      }
+    } else {
+      window.location.hash = '#' + page;
+      renderShopkeeperDedicatedPage(page);
+    }
+  }
+
+  function renderShopkeeperDedicatedPage(page) {
+    state.shopTab = page;
+    const pageTitles = {
+      vegetables: { title: '🥕 Manage Vegetable Catalog', subtitle: 'Add, edit prices, units, stock and discounts for all fresh vegetables.' },
+      inventory: { title: '📊 Stock & Inventory Management', subtitle: 'Monitor available stock, sold stock and inventory levels in real-time.' },
+      payments: { title: '💳 Shopkeeper Payment History', subtitle: 'Customer payment transactions, methods, UPI verifications and accounting.' },
+      reports: { title: '📈 Sales & Revenue Reports', subtitle: 'View daily, weekly, and monthly sales totals and top-performing vegetables.' },
+      chat: { title: '💬 Customer Support Messages', subtitle: 'Live chat and direct communication with customers.' },
+      settings: { title: '⚙️ Store Settings & UPI Configuration', subtitle: 'Configure shop status, UPI payments, delivery charges and thresholds.' },
+      profile: { title: '👤 Store Profile Settings', subtitle: 'Update shopkeeper details, contact number, store address and photo.' }
+    };
+
+    const info = pageTitles[page] || { title: '🏪 Shopkeeper Portal', subtitle: 'GreenHarvest store management' };
+
+    qs('#app').innerHTML = `
+      <div class="bg-card flex justify-between items-center flex-wrap gap-3" style="margin-bottom:20px;">
+        <div>
+          <h2 style="font-size:20px;">${info.title}</h2>
+          <p class="text-sm text-muted" style="margin-top:2px;">${info.subtitle}</p>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="os-btn" onclick="App.navigateToShopPage('dashboard')">📊 Dashboard</button>
+          <button id="shopStatusBtn" class="role-btn" onclick="App.toggleShop()" style="background:${state.settings.shop_status==='OPEN'?'#dcfce7':'#fef2f2'}; color:${state.settings.shop_status==='OPEN'?'#166534':'#dc2626'}; border-color:${state.settings.shop_status==='OPEN'?'#86efac':'#fca5a5'};">
+            ${state.settings.shop_status==='OPEN' ? '🟢 SHOP OPEN' : '🔴 SHOP CLOSED'}
+          </button>
+        </div>
+      </div>
+      <div id="shopContent">
+        <div class="page-loader"><div class="spinner"></div></div>
+      </div>
+    `;
+
+    renderSideMenu();
+    const container = qs('#shopContent');
+    switch (page) {
+      case 'vegetables': loadVegManagement(container); break;
+      case 'inventory': loadInventory(container); break;
+      case 'payments': loadPayments(container); break;
+      case 'reports': loadReports(container); break;
+      case 'chat': loadShopChat(container); break;
+      case 'settings': loadSettings(container); break;
+      case 'profile': loadShopProfile(container); break;
+      default: renderShopkeeperView(); break;
+    }
+    updateCartBadge();
+  }
+
+  async function loadShopTabContent(tab) {
+    navigateToShopPage(tab);
   }
 
   // VEGETABLE MANAGEMENT (SHOPKEEPER CRUD)
@@ -3299,6 +3738,7 @@ const App = (() => {
       qs('#smCustSupport')?.addEventListener('click', () => { closeSideMenu(); openChat(); });
       qs('#smCustLogout')?.addEventListener('click', () => { closeSideMenu(); logout(); });
     } else if (state.role === 'shopkeeper') {
+      const curHash = window.location.hash.replace('#', '') || 'dashboard';
       container.innerHTML = `
         <div class="side-menu-profile-card">
           <div style="display:flex; align-items:center; gap:12px;">
@@ -3314,23 +3754,32 @@ const App = (() => {
           </div>
         </div>
         <div class="side-menu-nav-list">
-          <button class="side-menu-nav-item" id="smShopProfile">
-            <span class="icon">👤</span> Store Profile Settings
+          <button class="side-menu-nav-item ${(curHash === 'dashboard' || curHash === '') ? 'active' : ''}" id="smShopDashboard">
+            <span class="icon">📊</span> Shopkeeper Dashboard
           </button>
-          <button class="side-menu-nav-item" id="smShopOrders">
-            <span class="icon">📦</span> Incoming Vegetable Orders
+          <button class="side-menu-nav-item ${curHash === 'orders' ? 'active' : ''}" id="smShopOrders">
+            <span class="icon">📦</span> Order Management
           </button>
-          <button class="side-menu-nav-item" id="smShopVeg">
-            <span class="icon">🥕</span> Manage Vegetable Catalog
+          <button class="side-menu-nav-item ${curHash === 'vegetables' ? 'active' : ''}" id="smShopVeg">
+            <span class="icon">🥕</span> Vegetable Catalog
           </button>
-          <button class="side-menu-nav-item" id="smShopInv">
+          <button class="side-menu-nav-item ${curHash === 'inventory' ? 'active' : ''}" id="smShopInv">
             <span class="icon">📊</span> Stock &amp; Inventory
           </button>
-          <button class="side-menu-nav-item" id="smShopPayments">
+          <button class="side-menu-nav-item ${curHash === 'payments' ? 'active' : ''}" id="smShopPayments">
             <span class="icon">💳</span> Payment History &amp; Accounting
           </button>
-          <button class="side-menu-nav-item" id="smShopSettings">
+          <button class="side-menu-nav-item ${curHash === 'reports' ? 'active' : ''}" id="smShopReports">
+            <span class="icon">📈</span> Sales Reports
+          </button>
+          <button class="side-menu-nav-item ${curHash === 'chat' ? 'active' : ''}" id="smShopChat">
+            <span class="icon">💬</span> Customer Support Chat
+          </button>
+          <button class="side-menu-nav-item ${curHash === 'settings' ? 'active' : ''}" id="smShopSettings">
             <span class="icon">⚙️</span> Store Settings &amp; UPI
+          </button>
+          <button class="side-menu-nav-item ${curHash === 'profile' ? 'active' : ''}" id="smShopProfile">
+            <span class="icon">👤</span> Store Profile Settings
           </button>
           <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--slate-100);">
             <button class="side-menu-nav-item danger" id="smShopLogout">
@@ -3339,12 +3788,15 @@ const App = (() => {
           </div>
         </div>
       `;
-      qs('#smShopProfile')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('profile'); });
-      qs('#smShopOrders')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('orders'); });
-      qs('#smShopVeg')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('vegetables'); });
-      qs('#smShopInv')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('inventory'); });
-      qs('#smShopPayments')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('payments'); });
-      qs('#smShopSettings')?.addEventListener('click', () => { closeSideMenu(); renderShopkeeperView(); loadShopTabContent('settings'); });
+      qs('#smShopDashboard')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('dashboard'); });
+      qs('#smShopOrders')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('orders'); });
+      qs('#smShopVeg')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('vegetables'); });
+      qs('#smShopInv')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('inventory'); });
+      qs('#smShopPayments')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('payments'); });
+      qs('#smShopReports')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('reports'); });
+      qs('#smShopChat')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('chat'); });
+      qs('#smShopSettings')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('settings'); });
+      qs('#smShopProfile')?.addEventListener('click', () => { closeSideMenu(); navigateToShopPage('profile'); });
       qs('#smShopLogout')?.addEventListener('click', () => { closeSideMenu(); logout(); });
     }
   }
@@ -3425,14 +3877,14 @@ const App = (() => {
       qs('#bnLogout')?.addEventListener('click', () => logout());
     } else if (state.role === 'shopkeeper') {
       nav.innerHTML = `
-        <button class="bnav-item" id="bnShopOrders" title="Orders">
-          <span class="icon">📦</span>Orders
+        <button class="bnav-item" id="bnShopOrders" title="Dashboard">
+          <span class="icon">📊</span>Dashboard
         </button>
         <button class="bnav-item" id="bnShopVeg" title="Vegetables">
           <span class="icon">🥕</span>Vegetables
         </button>
-        <button class="bnav-item" id="bnShopInv" title="Inventory">
-          <span class="icon">📊</span>Stock
+        <button class="bnav-item" id="bnShopPayments" title="Payments">
+          <span class="icon">💳</span>Payments
         </button>
         <button class="bnav-item" id="bnShopSettings" title="Settings">
           <span class="icon">⚙️</span>Settings
@@ -3442,10 +3894,10 @@ const App = (() => {
         </button>
       `;
 
-      qs('#bnShopOrders')?.addEventListener('click', () => { renderShopkeeperView(); loadShopTabContent('orders'); });
-      qs('#bnShopVeg')?.addEventListener('click', () => { renderShopkeeperView(); loadShopTabContent('vegetables'); });
-      qs('#bnShopInv')?.addEventListener('click', () => { renderShopkeeperView(); loadShopTabContent('inventory'); });
-      qs('#bnShopSettings')?.addEventListener('click', () => { renderShopkeeperView(); loadShopTabContent('settings'); });
+      qs('#bnShopOrders')?.addEventListener('click', () => navigateToShopPage('dashboard'));
+      qs('#bnShopVeg')?.addEventListener('click', () => navigateToShopPage('vegetables'));
+      qs('#bnShopPayments')?.addEventListener('click', () => navigateToShopPage('payments'));
+      qs('#bnShopSettings')?.addEventListener('click', () => navigateToShopPage('settings'));
       qs('#bnShopLogout')?.addEventListener('click', () => logout());
     }
   }
@@ -3747,11 +4199,11 @@ const App = (() => {
         renderCustomerView();
       }
     } else {
-      renderShopkeeperView();
-      if (window.location.hash === '#payments') {
-        loadShopTabContent('payments');
-      } else if (window.location.hash === '#profile') {
-        loadShopTabContent('profile');
+      const h = window.location.hash.replace('#', '');
+      if (['vegetables', 'inventory', 'payments', 'reports', 'chat', 'settings', 'profile'].includes(h)) {
+        navigateToShopPage(h);
+      } else {
+        renderShopkeeperView();
       }
     }
 
@@ -3778,13 +4230,39 @@ const App = (() => {
     openAddressModal,
     setDefaultAddress,
     deleteAddress,
-    loadShopProfile
+    loadShopProfile,
+    renderShopkeeperView,
+    setShopOrderCategory,
+    reacceptOrder,
+    rejectOrderModal,
+    navigateToShopPage,
+    shopTab: navigateToShopPage,
+    loadShopStats,
+    loadShopOrders,
+    setOrderStatus,
+    verifyPay,
+    openShopOrderDetailsModal,
+    getState: () => state
   };
 })();
 
 // Expose for inline handlers
 window.App = App;
-window.Modal = { hide: () => App.closeCartDrawer && document.getElementById('modalOverlay').classList.remove('show') };
+window.Modal = {
+  hide: () => {
+    if (App.closeCartDrawer) App.closeCartDrawer();
+    const ov = document.getElementById('modalOverlay');
+    if (ov) ov.classList.remove('show');
+  },
+  show: (html, wide) => {
+    const card = document.getElementById('modalCard');
+    const body = document.getElementById('modalBody');
+    const ov = document.getElementById('modalOverlay');
+    if (body) body.innerHTML = html;
+    if (card) card.style.maxWidth = wide ? '720px' : '520px';
+    if (ov) ov.classList.add('show');
+  }
+};
 window.applyCoupon = () => {
   const code = document.getElementById('couponInput')?.value?.trim().toUpperCase();
   if (!code) return;
@@ -3816,24 +4294,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle URL hash changes (back/forward navigation)
   window.addEventListener('hashchange', () => {
-    if (App.renderCustomerOrdersView && window.location.hash === '#orders') {
-      App.renderCustomerOrdersView();
-    } else if (window.location.hash === '#payments') {
-      const curRole = App.getState ? App.getState().role : null;
-      if (curRole === 'shopkeeper') {
-        if (App.shopTab) App.shopTab('payments');
-      } else if (App.renderCustomerPaymentsView) {
-        App.renderCustomerPaymentsView();
+    const curRole = App.getState ? App.getState().role : null;
+    const h = window.location.hash.replace('#', '');
+    if (curRole === 'shopkeeper') {
+      if (['vegetables', 'inventory', 'payments', 'reports', 'chat', 'settings', 'profile'].includes(h)) {
+        App.navigateToShopPage(h);
+      } else if (h === 'orders' || h === 'dashboard' || !h) {
+        App.navigateToShopPage('dashboard');
       }
-    } else if (window.location.hash === '#profile') {
-      const curRole = App.getState ? App.getState().role : null;
-      if (curRole === 'shopkeeper') {
-        if (App.shopTab) App.shopTab('profile');
-      } else if (App.renderCustomerProfileView) {
-        App.renderCustomerProfileView();
+    } else {
+      if (App.renderCustomerOrdersView && window.location.hash === '#orders') {
+        App.renderCustomerOrdersView();
+      } else if (window.location.hash === '#payments') {
+        if (App.renderCustomerPaymentsView) App.renderCustomerPaymentsView();
+      } else if (window.location.hash === '#profile') {
+        if (App.renderCustomerProfileView) App.renderCustomerProfileView();
+      } else if (App.renderCustomerView && (!window.location.hash || window.location.hash === '#')) {
+        App.renderCustomerView();
       }
-    } else if (App.renderCustomerView && (!window.location.hash || window.location.hash === '#')) {
-      App.renderCustomerView();
     }
   });
 

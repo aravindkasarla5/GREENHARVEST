@@ -1,29 +1,20 @@
 FROM php:8.2-apache
 
-# Fix Apache MPM conflict: disable event/worker, enable prefork (required for PHP)
-RUN a2dismod mpm_event mpm_worker 2>/dev/null || true \
-    && a2enmod mpm_prefork
-
-# Install PDO MySQL and required PHP extensions
 RUN docker-php-ext-install pdo pdo_mysql mysqli
 
-# Enable Apache mod_rewrite
 RUN a2enmod rewrite
 
-# Set working directory
-WORKDIR /var/www/html
+RUN rm -f /etc/apache2/mods-enabled/mpm_event.conf /etc/apache2/mods-enabled/mpm_event.load /etc/apache2/mods-enabled/mpm_worker.conf /etc/apache2/mods-enabled/mpm_worker.load
 
-# Copy all project files to Apache web root
+WORKDIR /var/www/html
 COPY . /var/www/html/
 
-# Set appropriate directory permissions
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html \
     && chmod -R 777 /var/www/html/uploads 2>/dev/null || true
 
-# Expose Apache port
 EXPOSE 80
 
-# Start Apache server
 CMD ["apache2-foreground"]
+
 
